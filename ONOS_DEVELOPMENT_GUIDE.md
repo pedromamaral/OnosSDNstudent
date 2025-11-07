@@ -23,7 +23,7 @@ File | Purpose | Typical edits
 - `FLOW_TIMEOUT_SECONDS`: flow rule lifetime.
 - `LOG_FILE_PATH`: destination for connection statistics.
 
-After editing Java files, let `./quick-start.sh` rebuild and redeploy, or run `mvn clean install` manually if you prefer.
+After editing Java files, let `./build.sh` rebuild, or run `mvn clean install` manually if you prefer.
 
 ---
 
@@ -44,31 +44,14 @@ cd /opt/onos
 
 2) Open ONOS CLI (user: onos, pass: rocks)
 ```bash
-# If you haven't already, create the CLI wrapper (one-time):
-cat > /usr/local/bin/onos-cli << 'EOF'
-#!/bin/bash
-ssh -o "HostKeyAlgorithms=+ssh-rsa" \
-    -o "PubkeyAcceptedAlgorithms=+ssh-rsa" \
-    -o "StrictHostKeyChecking=no" \
-    -o "UserKnownHostsFile=/dev/null" \
-    -p 8101 onos@localhost "$@"
-EOF
-chmod +x /usr/local/bin/onos-cli
-
-# Then connect:
 onos-cli
 ```
 
-3) Install and activate your build (choose method A; B is optional)
+3) Install and activate your build 
 ```text
 A) Reliable offline method (Karaf bundle):
    onos> bundle:install -s file:/workspaces/OpenFlow/target/learning-bridge-1.0-SNAPSHOT.jar
    onos> apps -s -a | grep learningbridge
-
-B) ONOS application subsystem:
-   onos> app install /workspaces/OpenFlow/target/learning-bridge-1.0-SNAPSHOT.jar
-   onos> app activate org.onosproject.learningbridge
-   (If this attempts to access the online registry, use method A instead.)
 ```
 
 4) Activate helpful ONOS services (once per controller reset)
