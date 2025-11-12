@@ -2,470 +2,314 @@
 
 ## Overview
 
-This guide explains how to develop, build, and test the ONOS Learning Bridge application in a two-environment setup:
-- **Dev Container** (VS Code): ONOS controller + development tools
-- **Mininet VM** (VirtualBox): Network simulation with OVS 3.5.0
+This guide focuses on ONOS-specific development workflows, bundle management, and advanced debugging techniques for the Learning Bridge application.
+
+**For initial setup**, see [GETTING_STARTED.md](GETTING_STARTED.md)  
+**For architecture and concepts**, see [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md)  
+**For quick commands**, see [QUICK_REFERENCE.md](QUICK_REFERENCE.md)
 
 ---
 
-## Your Workflow at a Glance
+## Development Workflow
 
-1. Open the project in the VS Code dev container
-2. Update the app code under `src/main/java/org/onosproject/learningbridge/`
-3. Run `./build.sh` to rebuild the app
-4. Start ONOS, install the bundle, and activate helper apps
-5. Use Mininet (in a separate VM) to generate traffic and validate behavior
-6. Check ONOS logs and `/tmp/tcp_connections.log` to confirm the features you added
+### Standard Iteration Cycle
+
+```
+Edit Code → Build → Update Bundle → Test → Monitor Logs
+    ↑                                                ↓
+    └────────────────────────────────────────────────┘
+```
+
+1. **Edit** code in `src/main/java/org/onosproject/learningbridge/LearningBridgeApp.java`
+2. **Build**: `./build.sh`
+3. **Update** bundle in ONOS CLI:
+   ```text
+   onos> bundle:update <ID> file:/workspaces/OnosSDNstudent/target/learning-bridge-1.0-SNAPSHOT.jar
+   ```
+4. **Test** in Mininet VM
+5. **Monitor** logs for behavior
+
+**Key principle**: Always use `bundle:update`, not uninstall/reinstall, to preserve state and speed up testing.
 
 ---
 
-## Code Structure
+## Configuration Tuning
 
-### Main Files
-
-| File | Purpose | Typical Edits |
-|------|---------|---------------|
-| `LearningBridgeApp.java` | Main application: packet processor, MAC learning, connection limiting, TCP tracking | Change logic in `LearningBridgeProcessor`, update limits/timeouts, add new behaviors |
-| `pom.xml` | Maven build configuration (ONOS 2.7.0) | Only edit if you need new dependencies |
-| `build.sh` | Build script | No changes needed |
-| `app.xml` | ONOS app descriptor | Usually no changes needed |
-
-### Key Classes and Methods
-
-#### Main Component: `LearningBridgeApp`
+Edit these constants in `LearningBridgeApp.java` to modify behavior:
 
 ```java
-@Component(immediate = true)
-public class LearningBridgeApp {
-    // OSGi services injected by ONOS
-    @Reference protected CoreService coreService;
-    @Reference protected PacketService packetService;
-    @Reference protected FlowRuleService flowRuleService;
-    @Reference protected FlowObjectiveService flowObjectiveService;
-    @Reference protected HostService hostService;
-    @Reference protected TopologyService topologyService;
-    @Reference protected DeviceService deviceService;
-    
-    // Configuration constants
-    private static final int MAX_CONNECTIONS_PER_HOST = 2;
-    private static final int FLOW_TIMEOUT = 30;  // seconds
-    private static final String LOG_FILE_PATH = "/tmp/tcp_connections.log";
-}
-```
-
-#### Inner Class: `LearningBridgeProcessor`
-
-Handles packet-in events:
-
-```java
-private class LearningBridgeProcessor implements PacketProcessor {
-    @Override
-    public void process(PacketContext context) {
-        // 1. Extract packet information
-        // 2. Learn MAC address → port mapping
-        // 3. Check connection limits (for unicast only)
-        // 4. Install flow rules or flood
-        // 5. Track TCP connections (if TCP)
-    }
-}
-```
-
-#### Inner Class: `InternalFlowListener`
-
-Monitors flow rule removals:
-
-```java
-private class InternalFlowListener implements FlowRuleListener {
-    @Override
-    public void event(FlowRuleEvent event) {
-        if (event.type() == FlowRuleEvent.Type.RULE_REMOVED) {
-            // 1. Clean up destination tracking for ALL flows
-            handleFlowRemoval(flowRule);
-            
-            // 2. Log TCP statistics if it was a TCP flow
-            handleTcpFlowRemoval(flowRule);
-        }
-    }
-}
-```
-
-### Important Data Structures
-
-```java
-// MAC learning table: DeviceId -> (MacAddress -> PortNumber)
-private Map<DeviceId, Map<MacAddress, PortNumber>> macTables;
-
-// Track active destinations per source: SourceMac -> Set of DestMacs
-private Map<MacAddress, Set<MacAddress>> activeDestinations;
-
-// TCP connection tracking: ConnectionKey -> ConnectionInfo
-private Map<ConnectionKey, TcpConnectionInfo> tcpConnections;
-```
-
----
-
-## Configuration Constants
-
-Edit these in `LearningBridgeApp.java` to tune behavior:
-
-```java
-// Maximum number of simultaneous connections per host
-// Applies to ALL traffic types (ICMP, TCP, UDP, etc.)
+// Connection limiting
 private static final int MAX_CONNECTIONS_PER_HOST = 2;
 
-// Flow rule timeout in seconds
+// Flow timeout (in seconds)
 private static final int FLOW_TIMEOUT = 30;
 
-// TCP connection statistics log file
+// TCP statistics log file
 private static final String LOG_FILE_PATH = "/tmp/tcp_connections.log";
 
-// Packet processing priority
+// Flow rule priority (higher = processed first)
 private static final int PRIORITY = 2;
 ```
 
-After editing, rebuild and update the bundle.
+**After changing constants**: Rebuild and update the bundle.
 
 ---
 
-## Build & Deploy
+## OSGi Bundle Management
 
-### Build the Application
+### Understanding Bundle States
 
-```bash
-cd /workspaces/OnosSDN
-./build.sh
+ONOS uses OSGi, which manages bundles through various states:
+
+```
+INSTALLED → RESOLVED → STARTING → ACTIVE → STOPPING → UNINSTALLED
 ```
 
-Output: `target/learning-bridge-1.0-SNAPSHOT.jar`
+**Key states**:
+- **INSTALLED**: Bundle is installed but dependencies not resolved
+- **RESOLVED**: Dependencies satisfied, ready to start
+- **ACTIVE**: Bundle is running (@Activate called)
+- **STOPPING**: Bundle is being stopped (@Deactivate called)
 
-### Start ONOS (if not running)
-
-```bash
-cd /opt/onos
-./bin/onos-service start
-```
-
-Wait ~30-45 seconds for startup.
-
-### Install the Bundle
-
-**First time only:** Create the CLI wrapper:
-
-```bash
-cat > /usr/local/bin/onos-cli << 'EOF'
-#!/bin/bash
-ssh -o "HostKeyAlgorithms=+ssh-rsa" \
-    -o "PubkeyAcceptedAlgorithms=+ssh-rsa" \
-    -o "StrictHostKeyChecking=no" \
-    -o "UserKnownHostsFile=/dev/null" \
-    -p 8101 onos@localhost "$@"
-EOF
-chmod +x /usr/local/bin/onos-cli
-```
-
-**Install bundle:**
-
-```bash
-onos-cli
-# Password: rocks
-```
+### Bundle Lifecycle Commands
 
 ```text
-onos> bundle:install -s file:/workspaces/OnosSDN/target/learning-bridge-1.0-SNAPSHOT.jar
+# View bundle details
 onos> bundle:list | grep learning
+
+# Start/stop bundle
+onos> bundle:start <ID>
+onos> bundle:stop <ID>
+
+# Update bundle (preserves state)
+onos> bundle:update <ID> file:/workspaces/OnosSDNstudent/target/learning-bridge-1.0-SNAPSHOT.jar
+
+# Uninstall bundle
+onos> bundle:uninstall <ID>
+
+# Refresh bundle dependencies
+onos> bundle:refresh <ID>
 ```
 
-**Activate required ONOS apps (first time only):**
+**Best practice**: Use `bundle:update` during development - it's faster and preserves application state.
 
-```text
-onos> app activate org.onosproject.openflow
-onos> app activate org.onosproject.hostprovider
-onos> app activate org.onosproject.lldpprovider
+### Component Lifecycle Hooks
+
+Your app uses OSGi Declarative Services annotations:
+
+```java
+@Component(immediate = true)  // Start immediately when bundle activates
+public class LearningBridgeApp {
+    
+    @Activate
+    protected void activate() {
+        // Called when component starts
+        // Register listeners, initialize data structures
+    }
+    
+    @Deactivate
+    protected void deactivate() {
+        // Called when component stops
+        // Clean up listeners, remove flows, log statistics
+    }
+}
 ```
 
-**Important:** Do NOT activate `org.onosproject.fwd` - it conflicts with the learning bridge.
-
-### Update Bundle After Code Changes
-
-**Recommended method (faster):**
-
-```text
-onos> bundle:list | grep learning       # note the ID (e.g., 200)
-onos> bundle:update 200 file:/workspaces/OnosSDN/target/learning-bridge-1.0-SNAPSHOT.jar
-```
+**Why this matters**: 
+- @Activate runs AFTER all @Reference services are injected
+- @Deactivate must clean up resources to prevent memory leaks
+- Proper cleanup allows smooth bundle updates
 
 ---
 
-## Testing with Mininet
+## Advanced Debugging
 
-### Set Up Mininet VM
+### Logging Levels
 
-1. **Download** the course VM from https://tele1.dee.fct.unl.pt/cgr
-2. **Configure networking** (VirtualBox): Use NAT Network or Bridged Adapter
-3. **Find your host IP** from the VM's perspective:
-   - Bridged: Your host's LAN IP (e.g., `192.168.1.100`)
-   - NAT: Your host IP as seen by the VM
-4. **Test connectivity** from VM:
-   ```bash
-   nc -vz <HOST_IP> 6653
-   ```
-
-### Start Mininet
-
-Get the `start-mininet.py` script from the course website, then:
-
-```bash
-sudo ./start-mininet.py <HOST_IP>
-```
-
-This script automatically:
-- Creates a tree topology
-- Configures switches for OpenFlow 1.3
-- Applies OVS 3.5.0 compatibility fixes
-- Connects to your ONOS controller
-
-### Test Basic Connectivity
-
-```bash
-mininet> pingall
-mininet> h1 ping h2
-```
-
-### Test Connection Limiting
-
-**Recommended: Use xterm**
-
-```bash
-# Open three terminal windows for host h1
-mininet> xterm h1 h1 h1
-
-# In h1's xterm windows:
-# Terminal 1: ping 10.0.0.2  # Should work ✅
-# Terminal 2: ping 10.0.0.3  # Should work ✅
-# Terminal 3: ping 10.0.0.4  # Should be BLOCKED ❌
-
-# Stop Terminal 1 (Ctrl+C)
-# Wait ~30 seconds for flow to expire
-
-# Terminal 3 should now work ✅ (connection slot freed)
-```
-
-### Test TCP Statistics
-
-```bash
-# Open xterm windows
-mininet> xterm h1 h2
-
-# In h2's terminal (server):
-h2# iperf -s
-
-# In h1's terminal (client):
-h1# iperf -c 10.0.0.2 -t 10
-
-# After the flow expires (30 seconds), check logs in dev container:
-tail /tmp/tcp_connections.log
-```
-
----
-
-## Monitoring & Debugging
-
-### View Application Logs
-
-```bash
-# In dev container
-tail -f /opt/onos/apache-karaf-*/data/log/karaf.log | grep LearningBridge
-
-# Monitor connection tracking
-tail -f /opt/onos/apache-karaf-*/data/log/karaf.log | grep -E "(Connection ended|Active destinations)"
-```
-
-### View TCP Statistics
-
-```bash
-cat /tmp/tcp_connections.log
-tail -f /tmp/tcp_connections.log
-```
-
-### ONOS CLI Commands
+Set logging granularity for your app:
 
 ```text
-onos> devices                    # Show connected switches
-onos> hosts                      # Show discovered hosts
-onos> flows -n                   # Show flow rules (no core flows)
-onos> apps -s -a                 # Show active apps
-onos> bundle:list | grep learning # Show bundle status
-
-# Enable debug logging
+# Available levels: TRACE, DEBUG, INFO, WARN, ERROR
 onos> log:set DEBUG org.onosproject.learningbridge
-
-# View recent logs
-onos> log:display | grep LearningBridge
+onos> log:set TRACE org.onosproject.learningbridge  # Very verbose
+onos> log:set INFO org.onosproject.learningbridge   # Default
 ```
 
----
+### Custom Logging in Code
 
-## How It Works
-
-### 1. MAC Address Learning
-
-When a packet arrives:
-1. Extract source MAC and input port
-2. Store mapping: `macTables[deviceId][srcMac] = inPort`
-3. Look up destination MAC in table
-4. If found, install flow rule for that specific path
-5. If not found, flood the packet
-
-### 2. Connection Limiting
-
-**Applies to ALL traffic types** (ICMP, TCP, UDP, etc.):
-
-1. When a new packet arrives, extract source and destination MACs
-2. **Skip if destination is broadcast/multicast** (essential for ARP, DHCP)
-3. Check if destination is already in `activeDestinations[srcMac]`
-4. If new destination and limit reached → drop packet
-5. Otherwise, add destination to active set and forward
-
-**Key insight:** Tracks destinations per source, not individual flows.
-
-### 3. Dynamic Cleanup
-
-**FlowRuleListener monitors flow removals:**
-
-1. When a flow expires or is removed, `handleFlowRemoval()` is called
-2. Extract source and destination MACs from the flow
-3. Query all devices to check if any other flows exist between same hosts
-4. If no flows remain → remove destination from `activeDestinations`
-5. This frees a connection slot for new destinations
-
-**Works for all protocols:** ICMP, TCP, UDP, etc.
-
-### 4. TCP Statistics Logging
-
-**Only for TCP flows:**
-
-1. When TCP SYN packet arrives → track connection in `tcpConnections`
-2. When TCP flow is removed → `handleTcpFlowRemoval()` is called
-3. Retrieve statistics from `FlowEntry`:
-   - `entry.bytes()` → total bytes transferred
-   - `entry.packets()` → total packets
-   - Calculate duration from timestamps
-4. Log to `/tmp/tcp_connections.log`
-
-**Format:**
+```java
+// Use SLF4J logger (already available in ONOS apps)
+log.trace("Detailed trace: packet={}", packet);
+log.debug("Debug info: srcMac={}, dstMac={}", srcMac, dstMac);
+log.info("Information: Learned MAC {} on port {}", mac, port);
+log.warn("Warning: Connection limit reached for {}", srcMac);
+log.error("Error: Failed to install flow rule", exception);
 ```
-2025-11-12 14:30:45 | TCP Connection | 00:00:00:00:00:01 -> 00:00:00:00:00:02 | 10.0.0.1:45678 -> 10.0.0.2:5001 | Duration: 10234ms | Bytes: 1048576 | Packets: 1024
+
+**Best practices**:
+- Use appropriate levels (don't log INFO for every packet)
+- Include context in messages (MAC addresses, device IDs)
+- Use placeholders `{}` for variables (more efficient)
+
+### Debugging Flow Rules
+
+```text
+# View all flows
+onos> flows
+
+# View only app flows (no core flows)
+onos> flows -n
+
+# View flows for specific device
+onos> flows of:0000000000000001
+
+# View flow with statistics
+onos> flows -s
+```
+
+**Interpreting flow output**:
+```
+id=..., state=ADDED, bytes=1024, packets=10, duration=5, priority=2
+    selector=[IN_PORT:1, ETH_SRC:00:00:00:00:00:01, ETH_DST:00:00:00:00:00:02]
+    treatment=[OUTPUT:2]
+```
+
+- **bytes/packets**: Statistics for this flow
+- **duration**: How long the flow has been active (seconds)
+- **selector**: What packets match this flow
+- **treatment**: What action to take
+
+### Monitoring Packet Processing
+
+Enable packet-level debugging:
+
+```java
+// In LearningBridgeProcessor.process()
+log.debug("Packet received: device={}, inPort={}, srcMac={}, dstMac={}", 
+          deviceId, inPort, srcMac, dstMac);
+```
+
+Then monitor in real-time:
+```bash
+tail -f /opt/onos/apache-karaf-*/data/log/karaf.log | grep "Packet received"
+```
+
+### Debugging Connection Tracking
+
+Add detailed logging:
+
+```java
+log.debug("Active destinations for {}: {}", srcMac, activeDestinations.get(srcMac));
+log.warn("Connection limit reached: {} has {} active connections", 
+         srcMac, activeDestinations.get(srcMac).size());
+```
+
+Monitor connection state:
+```bash
+tail -f /opt/onos/apache-karaf-*/data/log/karaf.log | grep -E "(Active destinations|Connection limit)"
 ```
 
 ---
 
 ## Common Development Tasks
 
-### Add a New Feature
+### Task: Add Debug Logging
 
-1. Edit `LearningBridgeApp.java`
-2. Rebuild: `./build.sh`
-3. Update bundle: `onos> bundle:update <ID> file:/workspaces/OnosSDN/target/learning-bridge-1.0-SNAPSHOT.jar`
-4. Test in Mininet
-5. Check logs
-
-### Change Connection Limit
-
-```java
-private static final int MAX_CONNECTIONS_PER_HOST = 5;  // Change from 2 to 5
-```
-
-Rebuild and update bundle.
-
-### Change Flow Timeout
-
-```java
-private static final int FLOW_TIMEOUT = 60;  // Change from 30 to 60 seconds
-```
-
-Rebuild and update bundle.
-
-### Add Custom Logging
-
-```java
-log.info("Custom message: {}", someVariable);
-log.debug("Debug info: {}", details);
-log.warn("Warning: {}", issue);
-log.error("Error: {}", problem);
-```
-
-Enable debug logging in ONOS CLI:
-```text
-onos> log:set DEBUG org.onosproject.learningbridge
-```
-
----
-
-## Troubleshooting
-
-### Bundle Won't Install
-
-**Solution:** Use file-based installation:
-```text
-onos> bundle:install -s file:/workspaces/OnosSDN/target/learning-bridge-1.0-SNAPSHOT.jar
-```
-
-### Old Code Still Running
-
-**Solution:** Update bundle instead of reinstalling:
-```text
-onos> bundle:list | grep learning
-onos> bundle:update <ID> file:/workspaces/OnosSDN/target/learning-bridge-1.0-SNAPSHOT.jar
-```
-
-### Switches Don't Connect
-
-**Solution:** Activate OpenFlow apps:
-```text
-onos> app activate org.onosproject.openflow
-onos> app activate org.onosproject.hostprovider
-onos> app activate org.onosproject.lldpprovider
-```
-
-### Hosts Can't Ping
-
-**Common causes:**
-1. `fwd` app is active (conflicts with learning bridge)
-   ```text
-   onos> app deactivate org.onosproject.fwd
+1. Add log statements in code:
+   ```java
+   log.debug("Processing packet from {} to {}", srcMac, dstMac);
    ```
-2. OpenFlow apps not activated (see above)
-3. Broadcast packets being blocked (fixed in current version)
+2. Rebuild: `./build.sh`
+3. Update bundle
+4. Enable debug level:
+   ```text
+   onos> log:set DEBUG org.onosproject.learningbridge
+   ```
+5. Monitor: `tail -f /opt/onos/apache-karaf-*/data/log/karaf.log | grep LearningBridge`
 
-### Connection Slots Not Freed
+### Task: Change Connection Limit
 
-**Fixed in current version.** The app now:
-- Monitors ALL flow types (not just TCP)
-- Removes destinations when flows expire
-- Works for ICMP, TCP, UDP, etc.
+1. Edit constant:
+   ```java
+   private static final int MAX_CONNECTIONS_PER_HOST = 5;
+   ```
+2. Rebuild and update bundle
+3. Test with xterm in Mininet
+
+### Task: Change Flow Timeout
+
+1. Edit constant:
+   ```java
+   private static final int FLOW_TIMEOUT = 60;  // 60 seconds
+   ```
+2. Rebuild and update bundle
+3. Verify with: `onos> flows -s` (check duration values)
+
+### Task: Add New Statistics
+
+1. Add field to track data:
+   ```java
+   private AtomicLong totalPacketsProcessed = new AtomicLong(0);
+   ```
+2. Increment in packet processor:
+   ```java
+   totalPacketsProcessed.incrementAndGet();
+   ```
+3. Log in @Deactivate:
+   ```java
+   log.info("Total packets processed: {}", totalPacketsProcessed.get());
+   ```
+
+3. Log in @Deactivate:
+   ```java
+   log.info("Total packets processed: {}", totalPacketsProcessed.get());
+   ```
+
+### Task: Modify Packet Processing Logic
+
+1. Edit `LearningBridgeProcessor.process()` method
+2. Test logic with log statements before committing
+3. Rebuild and update bundle
+4. Verify in Mininet: `pingall` or custom tests
+5. Monitor logs to confirm expected behavior
 
 ---
 
-## Best Practices
+## Performance Considerations
 
-1. **Always update bundle** after code changes (don't uninstall/reinstall)
-2. **Use xterm for testing** connection limiting (better than background processes)
-3. **Monitor logs** while testing to see what's happening
-4. **Clean Mininet** between tests: `sudo mn -c` (in VM)
-5. **Check flow rules** to understand behavior: `onos> flows -n`
-6. **Exclude broadcast/multicast** from connection limiting (essential for network operation)
+### Flow Rule vs. Packet Processing
 
----
+**Flow rule processing** (in switch):
+- ✅ Fast - handled in hardware/switch firmware
+- ✅ No controller overhead
+- ✅ Scales to high packet rates
 
-## Advanced Topics
+**Packet-in processing** (in controller):
+- ⚠️ Slower - involves controller communication
+- ⚠️ Limited by CPU and network bandwidth
+- ⚠️ Only for first packet or unknown destinations
 
-### Understanding OSGi Components
+**Goal**: Install flow rules quickly to minimize packet-ins.
 
-The app uses OSGi Service Component Runtime (SCR):
-- `@Component(immediate = true)` → Start immediately when bundle activates
-- `@Activate` → Method called when component starts
-- `@Deactivate` → Method called when component stops
-- `@Reference` → Inject ONOS services
+### When to Use makePermanent() vs makeTemporary()
+
+```java
+// Temporary flows (recommended for learning bridge)
+.makeTemporary(FLOW_TIMEOUT)
+```
+- ✅ Automatically expires
+- ✅ Frees resources
+- ✅ Adapts to topology changes
+
+```java
+// Permanent flows
+.makePermanent()
+```
+- ⚠️ Never expires automatically
+- ⚠️ Must be manually removed
+- ✅ Use for static forwarding rules
+
+**This app uses temporary flows** to enable dynamic connection tracking and cleanup.
 
 ### Flow Rule Priority
 
@@ -473,41 +317,241 @@ The app uses OSGi Service Component Runtime (SCR):
 private static final int PRIORITY = 2;
 ```
 
-Higher priority = processed first. Our app uses priority 2 (above default forwarding).
+**How priority works**:
+- Higher number = higher priority
+- Switch checks rules from highest to lowest priority
+- First match wins
 
-### Packet Processing Pipeline
-
-1. Packet arrives at switch
-2. No matching flow rule → packet-in to controller
-3. ONOS delivers to PacketProcessor (our app)
-4. App processes packet, installs flow rule
-5. Subsequent packets match flow rule → processed in switch (no controller involvement)
-6. Flow expires after FLOW_TIMEOUT seconds → removed
-7. FlowRuleListener detects removal → cleanup
+**In this app**:
+- TCP flows: Higher priority (to track specifically)
+- General flows: Normal priority
+- Default: Priority 0
 
 ---
 
-## Summary Checklist
+## Best Practices
 
-Development cycle:
+### Code Organization
 
-- [ ] Edited `LearningBridgeApp.java` with your new logic
-- [ ] Ran `./build.sh` (build succeeded)
-- [ ] Updated bundle in ONOS with `bundle:update <ID>`
-- [ ] Mininet VM connected to ONOS successfully
-- [ ] Mininet traffic shows the expected behavior
-- [ ] Logs or statistics confirm your feature works
+✅ **DO**:
+- Keep packet processing logic in `LearningBridgeProcessor`
+- Keep flow event handling in `InternalFlowListener`
+- Use helper methods for complex operations
+- Add meaningful log messages at key points
+
+❌ **DON'T**:
+- Mix concerns (keep MAC learning separate from connection limiting)
+- Process packets synchronously for too long (blocks other packets)
+- Forget to clean up in @Deactivate
+
+### Thread Safety
+
+✅ **DO**:
+- Use `ConcurrentHashMap` for shared data structures
+- Use `Collections.synchronizedMap()` if needed
+- Be aware that ONOS may call methods from different threads
+
+❌ **DON'T**:
+- Use `HashMap` for shared state
+- Assume single-threaded execution
+
+### Error Handling
+
+✅ **DO**:
+```java
+try {
+    flowObjectiveService.forward(deviceId, objective);
+} catch (Exception e) {
+    log.error("Failed to install flow rule", e);
+}
+```
+
+❌ **DON'T**:
+- Let exceptions propagate uncaught
+- Ignore error conditions silently
+
+### Logging Hygiene
+
+✅ **DO**:
+- Log important state changes (INFO)
+- Log errors with context (ERROR)
+- Use DEBUG for detailed packet processing
+
+❌ **DON'T**:
+- Log every packet at INFO level (floods logs)
+- Log sensitive data if this were production code
+
+---
+
+## Troubleshooting Development Issues
+
+### Issue: Bundle Won't Start
+
+**Symptoms**: Bundle shows INSTALLED but not ACTIVE
+
+**Solutions**:
+1. Check dependencies are resolved:
+   ```text
+   onos> bundle:list | grep learning
+   ```
+2. Check for exceptions:
+   ```bash
+   tail -f /opt/onos/apache-karaf-*/data/log/karaf.log | grep -i exception
+   ```
+3. Verify Java version compatibility (must be Java 11)
+
+### Issue: Code Changes Not Reflected
+
+**Symptoms**: Old behavior persists after bundle update
+
+**Solutions**:
+1. Verify build succeeded: Check for "BUILD SUCCESS" in `./build.sh` output
+2. Use correct path in update command:
+   ```text
+   onos> bundle:update <ID> file:/workspaces/OnosSDNstudent/target/learning-bridge-1.0-SNAPSHOT.jar
+   ```
+3. Try stopping and starting:
+   ```text
+   onos> bundle:stop <ID>
+   onos> bundle:start <ID>
+   ```
+4. Last resort - restart ONOS (loses all state):
+   ```bash
+   /opt/onos/bin/onos-service restart
+   ```
+
+### Issue: Flow Rules Not Installing
+
+**Symptoms**: Packets keep arriving at controller, no flows in switch
+
+**Check**:
+1. OpenFlow connection:
+   ```text
+   onos> devices
+   ```
+   Should show switches as AVAILABLE
+
+2. Flow objective service is working:
+   ```text
+   onos> flows -n
+   ```
+   Should show flows from your app
+
+3. Add debug logging:
+   ```java
+   log.debug("Installing flow rule: {} -> {}", srcMac, dstMac);
+   ```
+
+4. Check for exceptions during flow installation
+
+### Issue: Packet Processor Not Receiving Packets
+
+**Symptoms**: No "Packet received" debug logs
+
+**Check**:
+1. Packet processor was added in @Activate
+2. PacketService.requestPackets() was called
+3. OpenFlow apps are active:
+   ```text
+   onos> app list | grep -E "(openflow|hostprovider)"
+   ```
+
+---
+
+## Testing Strategies
+
+### Unit Testing Approach
+
+For student implementation, focus on:
+
+1. **MAC Learning**: 
+   - Test that MAC → port mappings are stored
+   - Test lookup returns correct port
+   - Test flooding when destination unknown
+
+2. **Connection Limiting**:
+   - Test counting active destinations
+   - Test blocking when limit reached
+   - Test allowing broadcast/multicast
+
+3. **Flow Cleanup**:
+   - Test destination removal when flows expire
+   - Test query for remaining flows works correctly
+
+### Integration Testing with Mininet
+
+**Progressive testing**:
+
+1. **Level 1**: Basic connectivity
+   ```bash
+   mininet> pingall  # All pings should work
+   ```
+
+2. **Level 2**: Connection limiting
+   ```bash
+   # Use xterm to open simultaneous connections
+   # Verify 3rd connection is blocked
+   ```
+
+3. **Level 3**: TCP statistics
+   ```bash
+   # Run iperf tests
+   # Verify statistics are logged
+   ```
+
+4. **Level 4**: Dynamic cleanup
+   ```bash
+   # Start 2 connections, stop 1, wait for timeout
+   # Verify 3rd connection now allowed
+   ```
 
 ---
 
 ## Further Reading
 
-- [GETTING_STARTED.md](GETTING_STARTED.md) - Setup walkthrough
-- [README.md](README.md) - Project overview
+### Documentation Files
+- [GETTING_STARTED.md](GETTING_STARTED.md) - Initial setup and environment configuration
+- [IMPLEMENTATION_GUIDE.md](IMPLEMENTATION_GUIDE.md) - Architecture and implementation concepts
 - [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Command cheat sheet
-- [ONOS Documentation](https://wiki.onosproject.org/) - Official ONOS docs
-- [Mininet Documentation](http://mininet.org/) - Mininet guides
+- [README.md](README.md) - Project overview
+
+### External Resources
+- **ONOS Wiki**: https://wiki.onosproject.org/
+  - Application development tutorials
+  - API documentation
+  - Best practices
+
+- **ONOS JavaDoc**: https://api.onosproject.org/
+  - Complete API reference
+  - Service interfaces
+  - Event types
+
+- **OpenFlow 1.3 Spec**: https://www.opennetworking.org/
+  - Understanding flow rules
+  - Match fields
+  - Actions
+
+---
+
+## Summary
+
+This guide covered ONOS-specific development workflows:
+
+✅ **Bundle Management**: How OSGi bundles work and lifecycle management  
+✅ **Debugging**: Logging, flow inspection, and troubleshooting  
+✅ **Common Tasks**: Configuration changes and feature additions  
+✅ **Best Practices**: Thread safety, error handling, performance  
+✅ **Testing**: Progressive testing strategy for validation  
+
+**Remember**: 
+- Use `bundle:update` for fast iterations
+- Enable DEBUG logging during development
+- Test incrementally (MAC learning → connection limiting → TCP stats)
+- Monitor logs to understand behavior
+
+Happy coding! 🚀
 
 ---
 
 *Last updated: November 2025*
+
