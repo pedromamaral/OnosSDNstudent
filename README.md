@@ -1,18 +1,93 @@
-# ONOS Learning Bridge with Connection Limiting
+# ONOS Learning Bridge - Student Version 🎓
 
-A Software-Defined Networking (SDN) application built on ONOS that implements an intelligent learning bridge with connection limiting and TCP statistics logging.
+**A hands-on SDN programming assignment using ONOS**
 
-## Features
+This repository contains a starter template for students to learn Software-Defined Networking (SDN) concepts by implementing a learning bridge application with advanced features.
 
-- 🔄 **MAC Address Learning**: Automatically learns MAC addresses and their associated switch ports
-- 🚦 **Connection Limiting**: Enforces a maximum number of simultaneous connections per host (default: 2) for ALL traffic types
-- 📊 **TCP Statistics Logging**: Tracks and logs packet count, byte count, and duration for TCP connections to `/tmp/tcp_connections.log`
-- ⏱️ **Flow Management**: Automatic flow rule timeout (30 seconds default)
-- 🔄 **Dynamic Connection Cleanup**: Automatically frees connection slots when flows expire
+## 🎯 What You'll Build
+
+An intelligent learning bridge that:
+- 🔄 **Learns MAC addresses** and their associated switch ports
+- 🚦 **Limits connections** per host (max 2 simultaneous connections by default)
+- 📊 **Tracks TCP statistics** (bytes, packets, duration)
+- ⏱️ **Manages flow lifecycles** with automatic cleanup
 
 ---
 
-## Architecture
+## 📚 Documentation Structure
+
+**Start here:** [STUDENT_GUIDE.md](STUDENT_GUIDE.md) - Complete assignment guide with 27 TODO tasks
+
+**Then review:**
+- [GETTING_STARTED.md](GETTING_STARTED.md) - Environment setup and first steps
+- [ONOS_DEVELOPMENT_GUIDE.md](ONOS_DEVELOPMENT_GUIDE.md) - Detailed development reference
+- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Command cheat sheet
+
+---
+
+## 🚀 Quick Start for Students
+
+### 1. Environment Setup
+
+This project uses a two-tier architecture:
+- **Dev Container** - Runs ONOS 2.7.0 + Java 11 + Maven for development
+- **Mininet VM** - Runs Mininet with OVS 3.5.0 for network testing
+
+### 2. Open in Dev Container
+
+1. Open this folder in VS Code
+2. Click **"Reopen in Container"** when prompted
+3. Wait for setup (~5-10 minutes first time)
+
+### 3. Build Your Application
+
+```bash
+cd /workspaces/OnosSDNstudent
+./build.sh
+```
+
+### 4. Start ONOS
+
+```bash
+cd /opt/onos
+./bin/onos-service start
+```
+
+### 5. Work Through the Assignment
+
+Open [STUDENT_GUIDE.md](STUDENT_GUIDE.md) and follow the TODO tasks in:
+```
+src/main/java/org/onosproject/learningbridge/LearningBridgeApp.java
+```
+
+---
+
+## 📋 Assignment Overview
+
+The code contains **27 guided TODO tasks** organized in sections:
+
+### Part 1: Setup (Tasks 1-5)
+- Understanding ONOS services
+- Application lifecycle management
+
+### Part 2: Packet Processing (Tasks 6-15)
+- MAC address learning
+- Connection limiting
+- Flow rule installation
+
+### Part 3: Flow Management (Tasks 16-21)
+- Flow lifecycle handling
+- Statistics collection
+- Cleanup logic
+
+### Part 4: Statistics (Tasks 22-27)
+- TCP connection tracking
+- Log file management
+- Helper class implementation
+
+---
+
+## 🏗️ Architecture
 
 **Two-tier setup for reliable development and testing:**
 
@@ -22,284 +97,189 @@ A Software-Defined Networking (SDN) application built on ONOS that implements an
 
 ---
 
-## Requirements (auto-installed in Dev Container)
+---
 
-- Java 11 LTS
-- Maven 3.6+
-- ONOS 2.7.0
-- Works on x86_64 and ARM64
+## 💻 Development Workflow
+
+### Initial Setup
+
+1. **Edit** code in `src/main/java/org/onosproject/learningbridge/LearningBridgeApp.java`
+2. **Build**: `./build.sh`
+3. **Install** in ONOS CLI:
+   ```text
+   onos-cli  # Password: rocks
+   onos> bundle:install -s file:/workspaces/OnosSDNstudent/target/learning-bridge-1.0-SNAPSHOT.jar
+   ```
+4. **Activate** required ONOS apps (first time only):
+   ```text
+   onos> app activate org.onosproject.openflow
+   onos> app activate org.onosproject.hostprovider
+   onos> app activate org.onosproject.lldpprovider
+   ```
+
+### Iterative Development
+
+After making code changes:
+
+1. **Rebuild**: `./build.sh`
+2. **Update** bundle in ONOS CLI:
+   ```text
+   onos> bundle:list | grep learning  # note the ID
+   onos> bundle:update <ID> file:/workspaces/OnosSDNstudent/target/learning-bridge-1.0-SNAPSHOT.jar
+   ```
+3. **Test** in Mininet
+4. **Monitor** logs
 
 ---
-## Requirements (outside Machine VM Host or container)
-- Mininet + Open vSwitch 3.5.0
 
-## Quick Start
+## 🧪 Testing Your Implementation
 
-### 1. Open in Dev Container
+### Setup Mininet VM
 
-1. Open this folder in VS Code
-2. **Reopen in Container** when prompted
-3. Wait for setup (~5-10 minutes first time)
+1. Download VM from course materials
+2. Configure network (NAT or Bridged)
+3. Get `start-mininet.py` from course page
+4. Start Mininet:
+   ```bash
+   sudo ./start-mininet.py <HOST_IP>
+   ```
 
-### 2. Build the Application
+### Test Cases
 
-\`\`\`bash
-cd /workspaces/OnosSDN
-./build.sh
-\`\`\`
-
-Output: \`target/learning-bridge-1.0-SNAPSHOT.jar\`
-
-### 3. Start ONOS
-
-\`\`\`bash
-cd /opt/onos
-./bin/onos-service start
-\`\`\`
-
-Wait ~30-45 seconds for ONOS to start.
-
-### 4. Install the Bundle
-
-Create the CLI wrapper (first time only):
-
-\`\`\`bash
-cat > /usr/local/bin/onos-cli << 'EOF'
-#!/bin/bash
-ssh -o "HostKeyAlgorithms=+ssh-rsa" \\
-    -o "PubkeyAcceptedAlgorithms=+ssh-rsa" \\
-    -o "StrictHostKeyChecking=no" \\
-    -o "UserKnownHostsFile=/dev/null" \\
-    -p 8101 onos@localhost "$@"
-EOF
-chmod +x /usr/local/bin/onos-cli
-\`\`\`
-
-Install the bundle:
-
-\`\`\`bash
-onos-cli
-# Password: rocks
-\`\`\`
-
-\`\`\`text
-onos> bundle:install -s file:/workspaces/OnosSDN/target/learning-bridge-1.0-SNAPSHOT.jar
-onos> bundle:list | grep learning
-\`\`\`
-
-Activate core ONOS apps (first time only):
-
-\`\`\`text
-onos> app activate org.onosproject.openflow
-onos> app activate org.onosproject.hostprovider
-onos> app activate org.onosproject.lldpprovider
-\`\`\`
-
-**Note:** Do NOT activate \`org.onosproject.fwd\` - it conflicts with the learning bridge app.
-
-### 5. Set Up Mininet VM
-
-**Download:** Get the course VM with Mininet from https://tele1.dee.fct.unl.pt/cgr (link shared in the laboratories page)
-
-**Network Config** (VirtualBox):
-- Use **NAT Network** or **Bridged Adapter**: VM can reach HOST at its IP address
-
-**Find your host IP:**
-\`\`\`bash  
-# On host machine
-ip addr    # Linux/macOS
-ipconfig   # Windows
-\`\`\`
-
-Note the IP the VM can reach (LAN IP or Host-Only IP).
-
-### 6. Connect Mininet to ONOS
-
-From the Mininet VM, test connectivity:
-
-\`\`\`bash
-nc -vz <HOST_IP> 6653
-# Example: nc -vz 192.168.1.100 6653
-\`\`\`
-
-Get the \`start-mininet.py\` script from https://tele1.dee.fct.unl.pt/cgr_2025_2026/pages/laboratorios.html
-
-Start Mininet:
-
-\`\`\`bash
-sudo ./start-mininet.py <HOST_IP>
-\`\`\`
-
-Replace \`<HOST_IP>\` with your actual IP (e.g., \`192.168.1.100\`).
-
-### 7. Test in Mininet
-
-\`\`\`bash
+#### 1. Basic MAC Learning
+```bash
 mininet> pingall
+# All hosts should be able to ping each other
+```
 
-# Test connection limiting using xterm
+#### 2. Connection Limiting
+```bash
 mininet> xterm h1 h1 h1
 
-# In h1's xterm windows:
-# Terminal 1: ping 10.0.0.2  # Should work ✅
-# Terminal 2: ping 10.0.0.3  # Should work ✅
-# Terminal 3: ping 10.0.0.4  # Should be BLOCKED ❌
+# Terminal 1: ping 10.0.0.2  ✅ Should work
+# Terminal 2: ping 10.0.0.3  ✅ Should work  
+# Terminal 3: ping 10.0.0.4  ❌ Should be BLOCKED
+```
 
-# Test TCP statistics
+#### 3. TCP Statistics
+```bash
 mininet> xterm h1 h2
-# In h2's terminal:
+
+# In h2 terminal:
 h2# iperf -s
-# In h1's terminal:
+
+# In h1 terminal:
 h1# iperf -c 10.0.0.2 -t 10
-\`\`\`
 
-### 8. Monitor Logs
+# After flow expires, check logs:
+tail /tmp/tcp_connections.log
+```
 
-From the dev container:
+### Monitor Logs
 
-\`\`\`bash
+```bash
 # Application logs
 tail -f /opt/onos/apache-karaf-*/data/log/karaf.log | grep LearningBridge
 
-# Connection statistics
-tail -f /tmp/tcp_connections.log
-
-# Monitor connection tracking
+# Connection tracking
 tail -f /opt/onos/apache-karaf-*/data/log/karaf.log | grep -E "(Connection ended|Active destinations)"
-\`\`\`
 
-**Web UI** (optional):
-- URL: http://localhost:8181/onos/ui
-- Login: onos / rocks
-
----
-
-## Development Workflow
-
-After initial setup, repeat:
-
-1. **Edit** code in dev container
-2. **Build**: \`./build.sh\`
-3. **Update** bundle in ONOS CLI: 
-   \`\`\`text
-   onos> bundle:list | grep learning  # note the bundle ID
-   onos> bundle:update <ID> file:/workspaces/OnosSDN/target/learning-bridge-1.0-SNAPSHOT.jar
-   \`\`\`
-4. **Test** in Mininet VM
-5. **Monitor** logs in dev container
+# TCP statistics
+tail -f /tmp/tcp_connections.log
+```
 
 ---
 
-## Configuration
+## 🎓 Learning Resources
 
-Edit these constants in \`LearningBridgeApp.java\`:
+### In This Repo
+- [STUDENT_GUIDE.md](STUDENT_GUIDE.md) - **START HERE** - Complete assignment walkthrough
+- [GETTING_STARTED.md](GETTING_STARTED.md) - Environment setup guide
+- [ONOS_DEVELOPMENT_GUIDE.md](ONOS_DEVELOPMENT_GUIDE.md) - Development reference
+- [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Command cheat sheet
 
-\`\`\`java
-private static final int MAX_CONNECTIONS_PER_HOST = 2;      // Max concurrent connections per host
-private static final int FLOW_TIMEOUT = 30;                  // Flow timeout in seconds
-private static final String LOG_FILE_PATH = "/tmp/tcp_connections.log";
-\`\`\`
-
-Rebuild and update the bundle after changes.
-
----
-
-## Common ONOS CLI Commands
-
-\`\`\`text
-onos-cli                          # Open CLI (password: rocks)
-apps -s -a                        # List active apps
-devices                           # Show connected switches
-ports                             # Show switch ports
-hosts                             # Show discovered hosts
-flows -n                          # Show flow rules
-log:set DEBUG org.onosproject.learningbridge  # Enable debug logging
-\`\`\`
+### External Resources
+- 📖 [ONOS Wiki](https://wiki.onosproject.org/)
+- 🔧 [OpenFlow Specification](https://www.opennetworking.org/software-defined-standards/specifications/)
+- 🌐 [Mininet Documentation](http://mininet.org/)
 
 ---
 
-## Troubleshooting
+## 📁 Project Structure
 
-| Issue | Solution |
-|-------|----------|
-| \`no matching host key type found\` | Create the \`onos-cli\` wrapper script (see Step 4) |
-| VM can't reach ONOS | Check VS Code Ports panel; verify \`nc -vz <HOST_IP> 6653\` from VM |
-| Mininet hangs "Starting switches" | ONOS not reachable; check controller IP and ensure ONOS is running |
-| No devices in ONOS | Verify \`protocols=OpenFlow13\` and correct controller IP |
-| Bundle won't install | Use \`bundle:install -s file:/...jar\` method |
-| Mininet can't ping | Activate OpenFlow apps in ONOS; ensure \`fwd\` app is NOT active |
-| ONOS won't start | Check logs: \`tail -100 /opt/onos/apache-karaf-*/data/log/karaf.log\` |
-| Old code still running | Update bundle with \`bundle:update <ID>\` instead of reinstalling |
-| Broadcast packets blocked | Fixed in latest version - broadcast/multicast excluded from limits |
-| Connection not freed after stopping ping | Fixed in latest version - cleanup works for all protocols |
-
----
-
-## Project Structure
-
-\`\`\`
-/workspaces/OnosSDN/
+```
+/workspaces/OnosSDNstudent/
 ├── pom.xml                                 # Maven build configuration
 ├── build.sh                                # Build script
 ├── src/
 │   └── main/
 │       ├── java/org/onosproject/learningbridge/
-│       │   └── LearningBridgeApp.java     # Main application logic
+│       │   └── LearningBridgeApp.java     # Main application (YOUR WORK HERE)
 │       └── resources/
 │           └── app.xml                     # ONOS app descriptor
-├── GETTING_STARTED.md                      # Detailed setup guide (START HERE)
+├── STUDENT_GUIDE.md                        # Assignment guide (START HERE)
+├── GETTING_STARTED.md                      # Setup guide
 ├── ONOS_DEVELOPMENT_GUIDE.md               # Development reference
 ├── QUICK_REFERENCE.md                      # Command cheat sheet
-├── CONNECTION_CLEANUP_FIX.md               # Technical doc on cleanup logic
-├── TROUBLESHOOTING_FIX.md                  # Technical doc on broadcast fix
 └── README.md                               # This file
-\`\`\`
+```
 
 ---
 
-## Useful Links
+## 🐛 Troubleshooting
 
-- 📖 [GETTING_STARTED.md](GETTING_STARTED.md) - **START HERE** - Complete setup walkthrough
-- 💻 [ONOS_DEVELOPMENT_GUIDE.md](ONOS_DEVELOPMENT_GUIDE.md) - In-depth development guide
-- 📋 [QUICK_REFERENCE.md](QUICK_REFERENCE.md) - Command cheat sheet
-- 🌐 [ONOS Documentation](https://wiki.onosproject.org/)
-- 🔧 [Mininet Documentation](http://mininet.org/)
-
----
-
-## How It Works
-
-### Connection Limiting
-
-- Tracks active destinations per source MAC address
-- Limits each host to MAX_CONNECTIONS_PER_HOST simultaneous destinations
-- Applies to **ALL traffic types** (ICMP, TCP, UDP, etc.)
-- Broadcast and multicast traffic is **excluded** from limits (essential for ARP, DHCP, etc.)
-
-### Dynamic Cleanup
-
-- Monitors flow rule removals using \`FlowRuleListener\`
-- When a flow expires or is removed, checks if any other flows exist between the same hosts
-- If no flows remain, removes the destination from the active set
-- This frees up connection slots dynamically
-
-### TCP Statistics
-
-- Tracks TCP SYN packets to identify new connections
-- When TCP flow rules are removed, retrieves statistics from the flow entry:
-  - Byte count
-  - Packet count
-  - Duration (calculated from timestamps)
-- Logs statistics to \`/tmp/tcp_connections.log\`
+| Issue | Solution |
+|-------|----------|
+| Build fails | Check Java version: `java -version` (should be 11) |
+| Can't connect to ONOS CLI | Create wrapper script (see GETTING_STARTED.md) |
+| VM can't reach ONOS | Verify port 6653 is forwarded: `nc -vz <HOST_IP> 6653` |
+| No devices in ONOS | Check OpenFlow apps are activated |
+| Flows not installed | Ensure `org.onosproject.fwd` is NOT active |
+| Connection limit not working | Check logs for "Connection limit reached" messages |
+| No TCP stats | Wait for flow timeout, check `/tmp/tcp_connections.log` |
 
 ---
 
-## License
+## ✅ Submission Requirements
 
-Educational use (CGR – FCT NOVA, 2024/2025)
+Before submitting your assignment:
+
+- [ ] All 27 TODO tasks completed
+- [ ] All QUESTION/ANSWER pairs filled in
+- [ ] Application builds without errors
+- [ ] MAC learning test passes (pingall works)
+- [ ] Connection limiting test passes (3rd connection blocked)
+- [ ] TCP statistics are logged correctly
+- [ ] Code is clean and well-commented
 
 ---
 
-**Ready to develop?** See [GETTING_STARTED.md](GETTING_STARTED.md) for the complete walkthrough! 🚀
+## 🎯 Grading Criteria
+
+Your implementation will be evaluated on:
+
+1. **Correctness** (40%) - Does it work as specified?
+2. **Code Quality** (20%) - Is it clean and well-structured?
+3. **Understanding** (30%) - Are the questions answered correctly?
+4. **Testing** (10%) - Did you test all features?
+
+---
+
+## 📞 Support
+
+- **Course Materials**: https://tele1.dee.fct.unl.pt/cgr
+- **Issues**: Check GETTING_STARTED.md troubleshooting section
+- **Questions**: Ask in course forum or office hours
+
+---
+
+## 📜 License
+
+Educational use - CGR Course, FCT NOVA, 2024/2025
+
+---
+
+**Ready to start?** Open [STUDENT_GUIDE.md](STUDENT_GUIDE.md) and begin your journey into SDN programming! 🚀
 
 *Last updated: November 2025*
+

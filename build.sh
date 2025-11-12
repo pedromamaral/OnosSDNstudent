@@ -70,7 +70,7 @@ echo ""
 
 # Step 2: Build the application
 echo "Step 2: Building ONOS application..."
-cd /workspaces/OnosSDN
+cd /workspaces/OnosSDNstudent
 
 if mvn -q clean package -DskipTests; then
     print_success "Application built successfully"
@@ -94,11 +94,11 @@ echo "2) Open ONOS CLI:"
 echo "   /opt/onos/bin/onos -l onos localhost     # password: rocks"
 echo ""
 echo "3) Install the bundle (recommended method):"
-echo "   onos> bundle:install -s file:/workspaces/OnosSDN/target/learning-bridge-1.0-SNAPSHOT.jar"
+echo "   onos> bundle:install -s file:/workspaces/OnosSDNstudent/target/learning-bridge-1.0-SNAPSHOT.jar"
 echo ""
 echo "   To update an existing bundle:"
 echo "   onos> bundle:list | grep learning       # note the bundle ID"
-echo "   onos> bundle:update <ID> file:/workspaces/OnosSDN/target/learning-bridge-1.0-SNAPSHOT.jar"
+echo "   onos> bundle:update <ID> file:/workspaces/OnosSDNstudent/target/learning-bridge-1.0-SNAPSHOT.jar"
 echo ""
 echo "4) Activate required ONOS apps (first time only):"
 echo "   onos> app activate org.onosproject.openflow"
