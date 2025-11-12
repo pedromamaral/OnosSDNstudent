@@ -8,7 +8,7 @@
 
 - **Docker Desktop** (Windows/macOS) or **Docker Engine** (Linux)
 - **VS Code** with **Dev Containers** extension
-- **VirtualBox** (or VMware/Hyper-V) with a Mininet VM
+- **VirtualBox** with a Mininet VM
 - 4+ GB RAM for Docker
 
 ---
